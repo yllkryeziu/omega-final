@@ -8,6 +8,14 @@
 
 ---
 
+## Results — Leaderboard #11
+
+| Union IoU | Poly Recall | Poly FPR | Year Accuracy |
+|-----------|-------------|----------|---------------|
+| **54.23%** | 69.96% | 29.31% | 13.10% |
+
+---
+
 ## Architecture
 
 ```

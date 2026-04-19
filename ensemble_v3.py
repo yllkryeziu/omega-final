@@ -1,18 +1,12 @@
 """
-Ensemble v3: Aggressive union with more signals to maximize recall.
+Ensemble v3 — Final submission.
 
-Strategy: v1 union worked best (52.71%). Build on it by adding S1 and NBR
-change signals, lowering thresholds, and using morphological closing to
-fill gaps (NOT opening which removes true positives).
-
-Signals:
-  1. U-TAE probabilities (TTA from v2 saved as prob maps)
-  2. XGBoost probabilities
-  3. NDVI change (vegetation loss)
-  4. NBR change (burn/clearing detection)
-  5. S1 VV change (radar backscatter drop)
-
-Union: any signal fires → positive. Then morphological closing to fill gaps.
+Changes from #18 (54.27%):
+  1. U-TAE threshold 0.15 → 0.12 (recall boost)
+  2. Remove (ndvi & nbr) pathway — no ML/radar confirmation, caused FPR on 48PWA
+  3. Keep closing + restore opening (proven in best submission)
+  4. Robust year estimation: yearly NDVI means (cloud-robust), first year with
+     significant drop, selective assignment (null when uncertain)
 """
 import glob
 import json
@@ -28,11 +22,9 @@ from submission_utils import raster_to_geojson
 
 TEST_TILES = ["18NVJ_1_6", "18NYH_2_1", "33NTE_5_1", "47QMA_6_2", "48PWA_0_6"]
 SUBMISSION_DIR = Path("submission")
-NDVI_DROP_THRESHOLD = 0.15
 
 
 def load_prob_map(path, ref, H, W):
-    """Load a probability raster and reproject to ref grid if needed."""
     with rasterio.open(path) as src:
         prob = src.read(1)
         if src.shape != (H, W):
@@ -46,7 +38,6 @@ def load_prob_map(path, ref, H, W):
 
 
 def compute_spectral_change(tile_id, ref, early_years, late_years, compute_fn):
-    """Generic function to compute spectral index change between early and late periods."""
     s2_dir = DATA_ROOT / f"sentinel-2/test/{tile_id}__s2_l2a"
     H, W = ref["shape"]
 
@@ -75,7 +66,6 @@ def compute_spectral_change(tile_id, ref, early_years, late_years, compute_fn):
 
 
 def ndvi_fn(bands):
-    """NDVI from S2 bands array (12, H, W). B08=band[7], B04=band[3]."""
     nir, red = bands[7], bands[3]
     ndvi = (nir - red) / (nir + red + 1e-10)
     ndvi[(nir == 0) & (red == 0)] = np.nan
@@ -83,7 +73,6 @@ def ndvi_fn(bands):
 
 
 def nbr_fn(bands):
-    """NBR = (NIR - SWIR2) / (NIR + SWIR2). B08=band[7], B12=band[11]."""
     nir, swir2 = bands[7], bands[11]
     nbr = (nir - swir2) / (nir + swir2 + 1e-10)
     nbr[(nir == 0) & (swir2 == 0)] = np.nan
@@ -91,62 +80,50 @@ def nbr_fn(bands):
 
 
 def compute_time_of_change(tile_id, ref):
-    """Estimate when deforestation occurred per pixel. Returns YYMM raster.
+    """Yearly NDVI analysis for robust change dating.
 
-    Requires sustained NDVI drop: 2+ consecutive observations below baseline - threshold.
-    This filters out transient cloud shadows and seasonal variation.
-    The recorded date is the FIRST month of the sustained drop.
+    Uses annual mean NDVI (averages out cloud noise) to find the first year
+    with a clear vegetation drop from the 2020 baseline. Only assigns a date
+    when the drop is unambiguous (>0.15). Returns YYMM raster with YY01 encoding.
     """
     s2_dir = DATA_ROOT / f"sentinel-2/test/{tile_id}__s2_l2a"
     H, W = ref["shape"]
 
-    baseline_arrays = []
-    for f in sorted(glob.glob(str(s2_dir / f"{tile_id}__s2_l2a_2020_*.tif"))):
-        try:
-            with rasterio.open(f) as src:
-                bands = src.read().astype(np.float32)
-            ndvi = ndvi_fn(bands)
-            if ndvi.shape == (H, W):
-                baseline_arrays.append(ndvi)
-        except Exception:
-            continue
-    if not baseline_arrays:
-        return None
-
-    baseline = np.nanmean(np.stack(baseline_arrays), axis=0)
-    time_raster = np.zeros((H, W), dtype=np.int16)
-    prev_dropped = np.zeros((H, W), dtype=bool)
-    prev_yymm = np.zeros((H, W), dtype=np.int16)
-
-    for year in [2021, 2022, 2023, 2024, 2025]:
-        yy = year - 2000
-        for month in range(1, 13):
-            fname = s2_dir / f"{tile_id}__s2_l2a_{year}_{month:02d}.tif"
-            if not fname.exists():
-                continue
+    yearly_ndvi = {}
+    for year in range(2020, 2026):
+        arrays = []
+        for f in sorted(glob.glob(str(s2_dir / f"{tile_id}__s2_l2a_{year}_*.tif"))):
             try:
-                with rasterio.open(fname) as src:
+                with rasterio.open(f) as src:
                     bands = src.read().astype(np.float32)
                 ndvi = ndvi_fn(bands)
-                if ndvi.shape != (H, W):
-                    continue
+                if ndvi.shape == (H, W):
+                    arrays.append(ndvi)
             except Exception:
                 continue
+        if arrays:
+            yearly_ndvi[year] = np.nanmean(np.stack(arrays), axis=0)
 
-            drop = baseline - ndvi
-            currently_dropped = drop > NDVI_DROP_THRESHOLD
+    if 2020 not in yearly_ndvi:
+        return None
 
-            sustained = currently_dropped & prev_dropped & (time_raster == 0)
-            time_raster[sustained] = prev_yymm[sustained]
+    baseline = yearly_ndvi[2020]
+    time_raster = np.zeros((H, W), dtype=np.int16)
 
-            prev_yymm[currently_dropped & ~prev_dropped] = (yy * 100 + month)
-            prev_dropped = currently_dropped
+    for year in [2021, 2022, 2023, 2024, 2025]:
+        if year not in yearly_ndvi:
+            continue
+        drop = baseline - yearly_ndvi[year]
+        newly_detected = (drop > 0.15) & (time_raster == 0)
+        if not newly_detected.any():
+            continue
+        yy = year - 2000
+        time_raster[newly_detected] = yy * 100 + 1
 
     return time_raster
 
 
 def compute_s1_change(tile_id, ref):
-    """S1 VV backscatter change in dB. Negative = structure loss."""
     s1_dir = DATA_ROOT / f"sentinel-1/test/{tile_id}__s1_rtc"
     H, W = ref["shape"]
 
@@ -200,12 +177,12 @@ def main():
             continue
         H, W = ref["shape"]
 
-        # --- Signal 1: U-TAE ---
+        # --- Signal 1: U-TAE (lowered from 0.15 to 0.12 for recall) ---
         utae_prob = load_prob_map(SUBMISSION_DIR / f"prob_{tile_id}.tif", ref, H, W)
-        utae_mask = utae_prob > 0.10
-        print(f"  U-TAE@0.10: {100*utae_mask.mean():.1f}%")
+        utae_mask = utae_prob > 0.12
+        print(f"  U-TAE@0.12: {100*utae_mask.mean():.1f}%")
 
-        # --- Signal 2: XGBoost ---
+        # --- Signal 2: XGBoost (keep 0.25 — proven clean separation) ---
         xgb_prob = load_prob_map(f"submission_xgb/prob_{tile_id}.tif", ref, H, W)
         xgb_mask = xgb_prob > 0.25
         print(f"  XGBoost@0.25: {100*xgb_mask.mean():.1f}%")
@@ -231,32 +208,35 @@ def main():
         # --- Signal 5: S1 VV change ---
         s1_change = compute_s1_change(tile_id, ref)
         if s1_change is not None:
-            s1_mask = s1_change < -2.0  # >2 dB drop
+            s1_mask = s1_change < -2.0
             print(f"  S1 VV drop>2dB: {100*s1_mask.mean():.1f}%")
         else:
             s1_mask = np.zeros((H, W), dtype=bool)
             print("  S1: N/A")
 
-        # --- Union ---
-        # ML models are primary, spectral indices are supporting
-        # Require spectral signals to agree with at least one ML model OR both indices
+        # --- Gated Union ---
+        # ML models trusted alone (primary detectors)
         ml_union = utae_mask | xgb_mask
-        spectral_union = ndvi_mask | nbr_mask
-        s1_strong = s1_mask & (s1_change < -3.0 if s1_change is not None else np.zeros((H,W), dtype=bool))
 
-        # Final: ML model fires, OR (spectral + S1 agree), OR (both spectral indices agree)
-        union = ml_union | (spectral_union & s1_mask) | (ndvi_mask & nbr_mask)
+        # Spectral only fires when confirmed by S1 radar (removes cloud/seasonal FP)
+        # REMOVED: (ndvi_mask & nbr_mask) pathway — no ML/radar confirmation,
+        # caused 26.9% NBR FP on 48PWA_0_6
+        spectral_confirmed = (ndvi_mask | nbr_mask) & s1_mask
 
-        n_union_pre = union.sum()
+        union = ml_union | spectral_confirmed
+
         print(f"  Union (pre-cleanup): {100*union.mean():.1f}%")
 
-        # Morphological closing to fill small gaps in detected areas
+        # Morphological closing fills small gaps within deforested areas
         union = ndimage.binary_closing(union, iterations=1).astype(np.uint8)
+
+        # Opening removes truly isolated single pixels (10m = never real clearing)
+        union = ndimage.binary_opening(union, iterations=1).astype(np.uint8)
 
         pct = 100 * union.sum() / union.size
         print(f"  Final: {union.sum():,} px ({pct:.1f}%)")
 
-        # --- Time of change estimation ---
+        # --- Time of change (yearly NDVI, robust to clouds) ---
         time_raster = compute_time_of_change(tile_id, ref)
         if time_raster is not None:
             detected_times = time_raster[union == 1]
@@ -264,12 +244,12 @@ def main():
             if len(detected_times) > 0:
                 counts = np.bincount(detected_times)
                 mode_yymm = counts.argmax()
-                print(f"  Time of change: mode={mode_yymm // 100 + 2000}-{mode_yymm % 100:02d}, "
-                      f"coverage={100 * (detected_times > 0).sum() / max(1, (union == 1).sum()):.0f}%")
+                print(f"  Time: mode={mode_yymm // 100 + 2000}-{mode_yymm % 100:02d}, "
+                      f"coverage={100 * len(detected_times) / max(1, (union == 1).sum()):.0f}%")
             else:
-                print("  Time of change: no NDVI-based dates found")
+                print("  Time: no dates found")
         else:
-            print("  Time of change: N/A (no S2 baseline)")
+            print("  Time: N/A")
 
         # Save raster
         raster_path = SUBMISSION_DIR / f"pred_{tile_id}.tif"

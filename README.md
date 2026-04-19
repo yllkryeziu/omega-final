@@ -2,7 +2,9 @@
 
 **osapiens Makeathon 2026** — Pixel-level deforestation detection using multi-modal satellite time series.
 
-![Deforestation event example](content/deforestation.png)
+**Live Demo:** [omegaearth.web.app](https://omegaearth.web.app/)
+
+![Demo](togif.gif)
 
 ---
 

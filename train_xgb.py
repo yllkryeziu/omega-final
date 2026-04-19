@@ -38,6 +38,7 @@ TRAIN_TILES = [
     "18NXH_6_8", "18NXJ_7_6", "18NYH_9_9", "19NBD_4_4",
     "47QMB_0_8", "47QQV_2_4", "48PUT_0_8", "48PWV_7_8",
     "48PXC_7_7", "48PYB_3_6", "48QVE_3_0", "48QWD_2_2",
+    "AF_MAINDOMBE_01",
 ]
 
 # S2 band indices (1-based)
@@ -250,6 +251,15 @@ def extract_aef_features(tile_id, split, ref):
     """Extract AEF embedding change features, GPU-reprojected to S2 grid."""
     aef_2020_path = DATA_ROOT / f"aef-embeddings/{split}/{tile_id}_2020.tiff"
     aef_2025_path = DATA_ROOT / f"aef-embeddings/{split}/{tile_id}_2025.tiff"
+
+    if not aef_2020_path.exists() or not aef_2025_path.exists():
+        H, W = ref["shape"]
+        features = {}
+        for i in range(64):
+            features[f"aef_diff_{i:02d}"] = np.full((H, W), np.nan, dtype=np.float32)
+        features["aef_cosine_dist"] = np.full((H, W), np.nan, dtype=np.float32)
+        features["aef_l2_dist"] = np.full((H, W), np.nan, dtype=np.float32)
+        return features
 
     with rasterio.open(aef_2020_path) as src:
         emb_2020 = src.read().astype(np.float32)

@@ -37,6 +37,7 @@ TRAIN_TILES = [
     "18NXH_6_8", "18NXJ_7_6", "18NYH_9_9", "19NBD_4_4",
     "47QMB_0_8", "47QQV_2_4", "48PUT_0_8", "48PWV_7_8",
     "48PXC_7_7", "48PYB_3_6", "48QVE_3_0", "48QWD_2_2",
+    "AF_MAINDOMBE_01",
 ]
 
 SOUTH_AMERICA = [t for t in TRAIN_TILES if t.startswith("18") or t.startswith("19")]
@@ -308,30 +309,31 @@ def build_cv_splits():
     # Fold 3: rotate
     sa = SOUTH_AMERICA.copy()
     sea = SOUTHEAST_ASIA.copy()
+    africa = [t for t in TRAIN_TILES if t.startswith("AF_")]
 
     folds = [
         {
             "fold": 0,
             "val": [sa[0], sa[1], sea[0], sea[1]],
-            "train": sa[2:] + sea[2:],
+            "train": sa[2:] + sea[2:] + africa,
             "note": "Balanced holdout"
         },
         {
             "fold": 1,
             "val": [sa[2], sa[3], sea[2], sea[3]],
-            "train": sa[:2] + sa[4:] + sea[:2] + sea[4:],
+            "train": sa[:2] + sa[4:] + sea[:2] + sea[4:] + africa,
             "note": "Balanced holdout"
         },
         {
             "fold": 2,
             "val": [sa[4], sa[5], sea[4], sea[5]],
-            "train": sa[:4] + sa[6:] + sea[:4] + sea[6:],
+            "train": sa[:4] + sa[6:] + sea[:4] + sea[6:] + africa,
             "note": "Balanced holdout"
         },
         {
             "fold": 3,
             "val": [sa[6], sa[7], sea[6], sea[7]],
-            "train": sa[:6] + sea[:6],
+            "train": sa[:6] + sea[:6] + africa,
             "note": "Balanced holdout"
         },
     ]

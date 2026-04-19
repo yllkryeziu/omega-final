@@ -14,6 +14,8 @@ def raster_to_geojson(
     raster_path: str | Path,
     output_path: str | Path | None = None,
     min_area_ha: float = 0.5,
+    time_step_raster: np.ndarray | None = None,
+    time_step_transform=None,
 ) -> dict:
     """Convert a binary deforestation prediction raster to a GeoJSON FeatureCollection.
 
@@ -93,7 +95,29 @@ def raster_to_geojson(
             "Lower the threshold or check your prediction raster."
         )
 
-    gdf["time_step"] = None
+    if time_step_raster is not None and time_step_transform is not None:
+        from rasterio.features import geometry_mask
+        gdf_native = gdf.to_crs(crs)
+        time_steps = []
+        for geom in gdf_native.geometry:
+            try:
+                mask = ~geometry_mask([geom], out_shape=time_step_raster.shape,
+                                      transform=time_step_transform)
+                vals = time_step_raster[mask]
+                vals = vals[vals > 0]
+                if len(vals) > 0:
+                    counts = np.bincount(vals.astype(int))
+                    mode_val = counts.argmax()
+                    yy = mode_val // 100
+                    mm = mode_val % 100
+                    time_steps.append(f"{yy:02d}{mm:02d}")
+                else:
+                    time_steps.append(None)
+            except Exception:
+                time_steps.append(None)
+        gdf["time_step"] = time_steps
+    else:
+        gdf["time_step"] = None
 
     geojson = json.loads(gdf.to_json())
 

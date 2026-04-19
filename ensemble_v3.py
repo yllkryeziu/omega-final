@@ -28,6 +28,7 @@ from submission_utils import raster_to_geojson
 
 TEST_TILES = ["18NVJ_1_6", "18NYH_2_1", "33NTE_5_1", "47QMA_6_2", "48PWA_0_6"]
 SUBMISSION_DIR = Path("submission")
+NDVI_DROP_THRESHOLD = 0.15
 
 
 def load_prob_map(path, ref, H, W):
@@ -89,6 +90,61 @@ def nbr_fn(bands):
     return nbr
 
 
+def compute_time_of_change(tile_id, ref):
+    """Estimate when deforestation occurred per pixel. Returns YYMM raster.
+
+    Requires sustained NDVI drop: 2+ consecutive observations below baseline - threshold.
+    This filters out transient cloud shadows and seasonal variation.
+    The recorded date is the FIRST month of the sustained drop.
+    """
+    s2_dir = DATA_ROOT / f"sentinel-2/test/{tile_id}__s2_l2a"
+    H, W = ref["shape"]
+
+    baseline_arrays = []
+    for f in sorted(glob.glob(str(s2_dir / f"{tile_id}__s2_l2a_2020_*.tif"))):
+        try:
+            with rasterio.open(f) as src:
+                bands = src.read().astype(np.float32)
+            ndvi = ndvi_fn(bands)
+            if ndvi.shape == (H, W):
+                baseline_arrays.append(ndvi)
+        except Exception:
+            continue
+    if not baseline_arrays:
+        return None
+
+    baseline = np.nanmean(np.stack(baseline_arrays), axis=0)
+    time_raster = np.zeros((H, W), dtype=np.int16)
+    prev_dropped = np.zeros((H, W), dtype=bool)
+    prev_yymm = np.zeros((H, W), dtype=np.int16)
+
+    for year in [2021, 2022, 2023, 2024, 2025]:
+        yy = year - 2000
+        for month in range(1, 13):
+            fname = s2_dir / f"{tile_id}__s2_l2a_{year}_{month:02d}.tif"
+            if not fname.exists():
+                continue
+            try:
+                with rasterio.open(fname) as src:
+                    bands = src.read().astype(np.float32)
+                ndvi = ndvi_fn(bands)
+                if ndvi.shape != (H, W):
+                    continue
+            except Exception:
+                continue
+
+            drop = baseline - ndvi
+            currently_dropped = drop > NDVI_DROP_THRESHOLD
+
+            sustained = currently_dropped & prev_dropped & (time_raster == 0)
+            time_raster[sustained] = prev_yymm[sustained]
+
+            prev_yymm[currently_dropped & ~prev_dropped] = (yy * 100 + month)
+            prev_dropped = currently_dropped
+
+    return time_raster
+
+
 def compute_s1_change(tile_id, ref):
     """S1 VV backscatter change in dB. Negative = structure loss."""
     s1_dir = DATA_ROOT / f"sentinel-1/test/{tile_id}__s1_rtc"
@@ -146,8 +202,8 @@ def main():
 
         # --- Signal 1: U-TAE ---
         utae_prob = load_prob_map(SUBMISSION_DIR / f"prob_{tile_id}.tif", ref, H, W)
-        utae_mask = utae_prob > 0.15
-        print(f"  U-TAE@0.15: {100*utae_mask.mean():.1f}%")
+        utae_mask = utae_prob > 0.10
+        print(f"  U-TAE@0.10: {100*utae_mask.mean():.1f}%")
 
         # --- Signal 2: XGBoost ---
         xgb_prob = load_prob_map(f"submission_xgb/prob_{tile_id}.tif", ref, H, W)
@@ -197,11 +253,23 @@ def main():
         # Morphological closing to fill small gaps in detected areas
         union = ndimage.binary_closing(union, iterations=1).astype(np.uint8)
 
-        # Light opening to remove truly isolated single pixels
-        union = ndimage.binary_opening(union, iterations=1).astype(np.uint8)
-
         pct = 100 * union.sum() / union.size
         print(f"  Final: {union.sum():,} px ({pct:.1f}%)")
+
+        # --- Time of change estimation ---
+        time_raster = compute_time_of_change(tile_id, ref)
+        if time_raster is not None:
+            detected_times = time_raster[union == 1]
+            detected_times = detected_times[detected_times > 0]
+            if len(detected_times) > 0:
+                counts = np.bincount(detected_times)
+                mode_yymm = counts.argmax()
+                print(f"  Time of change: mode={mode_yymm // 100 + 2000}-{mode_yymm % 100:02d}, "
+                      f"coverage={100 * (detected_times > 0).sum() / max(1, (union == 1).sum()):.0f}%")
+            else:
+                print("  Time of change: no NDVI-based dates found")
+        else:
+            print("  Time of change: N/A (no S2 baseline)")
 
         # Save raster
         raster_path = SUBMISSION_DIR / f"pred_{tile_id}.tif"
@@ -213,11 +281,15 @@ def main():
         with rasterio.open(raster_path, "w", **meta) as dst:
             dst.write(union, 1)
 
-        # GeoJSON
+        # GeoJSON with time_step
         geojson_path = SUBMISSION_DIR / f"pred_{tile_id}.geojson"
         try:
-            geojson = raster_to_geojson(str(raster_path), output_path=str(geojson_path),
-                                        min_area_ha=0.25)
+            geojson = raster_to_geojson(
+                str(raster_path), output_path=str(geojson_path),
+                min_area_ha=0.25,
+                time_step_raster=time_raster,
+                time_step_transform=ref["transform"],
+            )
             combined_geojson["features"].extend(geojson["features"])
             print(f"  GeoJSON: {len(geojson['features'])} polygons")
         except ValueError as e:

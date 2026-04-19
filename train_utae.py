@@ -300,10 +300,23 @@ def collate_fn(batch):
         "label": torch.stack([b["label"] for b in batch]),
         "mask": torch.stack([b["mask"] for b in batch]),
     }
-    if "aef" in batch[0]:
-        out["aef"] = torch.stack([b["aef"] for b in batch])
-    if "quality" in batch[0]:
-        out["quality"] = torch.stack([b["quality"] for b in batch])
+    if any("aef" in b for b in batch):
+        aef_ch = next(b["aef"].shape[0] for b in batch if "aef" in b)
+        aef_list = []
+        for b in batch:
+            if "aef" in b:
+                aef_list.append(b["aef"])
+            else:
+                aef_list.append(torch.zeros(aef_ch, ps, ps))
+        out["aef"] = torch.stack(aef_list)
+    if any("quality" in b for b in batch):
+        q_list = []
+        for b in batch:
+            if "quality" in b:
+                q_list.append(b["quality"])
+            else:
+                q_list.append(torch.ones(ps, ps))
+        out["quality"] = torch.stack(q_list)
     return out
 
 

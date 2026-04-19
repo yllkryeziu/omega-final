@@ -24,6 +24,7 @@ from submission_utils import raster_to_geojson
 
 MODEL_DIR = Path("models")
 SUBMISSION_DIR = Path("submission")
+SUBMISSION_XGB_DIR = Path("submission_xgb")
 TEST_TILES = ["18NVJ_1_6", "18NYH_2_1", "33NTE_5_1", "47QMA_6_2", "48PWA_0_6"]
 
 
@@ -45,13 +46,28 @@ def predict_tile(tile_id, model, feature_names):
     valid_mask = ~nan_mask
 
     y_pred = np.zeros(X.shape[0], dtype=np.uint8)
+    y_prob = np.zeros(X.shape[0], dtype=np.float32)
     if valid_mask.sum() > 0:
         y_pred[valid_mask] = model.predict(X[valid_mask]).astype(np.uint8)
+        y_prob[valid_mask] = model.predict_proba(X[valid_mask])[:, 1]
 
     pred_2d = y_pred.reshape(H, W)
+    prob_2d = y_prob.reshape(H, W)
     n_pos = pred_2d.sum()
     pct = 100 * n_pos / pred_2d.size
     print(f"  Predictions: {n_pos:,} deforested pixels ({pct:.1f}%), {nan_mask.sum():,} NaN skipped")
+
+    # Save probability map for ensemble use
+    SUBMISSION_XGB_DIR.mkdir(parents=True, exist_ok=True)
+    prob_path = SUBMISSION_XGB_DIR / f"prob_{tile_id}.tif"
+    prob_meta = {
+        "driver": "GTiff", "dtype": "float32", "width": W, "height": H,
+        "count": 1, "crs": ref["crs"], "transform": ref["transform"],
+        "nodata": 0, "compress": "lzw",
+    }
+    with rasterio.open(prob_path, "w", **prob_meta) as dst:
+        dst.write(prob_2d, 1)
+    print(f"  Probability map: {prob_path}")
 
     # Save binary raster as GeoTIFF
     raster_path = SUBMISSION_DIR / f"pred_{tile_id}.tif"

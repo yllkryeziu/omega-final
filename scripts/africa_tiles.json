@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "description": "10 African training tiles (10 km x 10 km) to close the training gap for test tile 33NTE_5_1 (Congo basin). Centroids chosen at documented deforestation hotspots where RADD + GLAD-L alerts are dense 2020-2024, so label-fusion (>=2 votes) will yield useful positives. 7 Congo-basin tiles match the test tile's biome; 3 diverse-biome tiles (W. Africa cocoa, Madagascar rainforest, Mozambique miombo) regularize cross-region generalization.",
+  "target_test_tile": "33NTE_5_1",
+  "tile_size_km": 10,
+  "tiles": [
+    {
+      "tile_id": "AF_MAINDOMBE_01",
+      "lat": -2.10,
+      "lon": 18.70,
+      "region": "DRC_Mai-Ndombe",
+      "biome": "Congo_lowland_rainforest",
+      "rationale": "REDD+ pilot zone; heavy slash-and-burn 2020-2024; dense RADD coverage"
+    },
+    {
+      "tile_id": "AF_TSHOPO_01",
+      "lat": 0.80,
+      "lon": 24.50,
+      "region": "DRC_Tshopo_Yangambi",
+      "biome": "Congo_lowland_rainforest",
+      "rationale": "Industrial logging concessions along Congo river"
+    },
+    {
+      "tile_id": "AF_EQUATEUR_01",
+      "lat": 0.10,
+      "lon": 20.00,
+      "region": "DRC_Equateur",
+      "biome": "Congo_lowland_rainforest",
+      "rationale": "Smallholder cassava + palm-oil expansion; mixed-density GLAD-L alerts"
+    },
+    {
+      "tile_id": "AF_SANGHA_01",
+      "lat": 2.00,
+      "lon": 16.50,
+      "region": "Republic-of-Congo_Sangha",
+      "biome": "Congo_lowland_rainforest",
+      "rationale": "Industrial logging concessions (FSC + non-FSC); continuous RADD activity"
+    },
+    {
+      "tile_id": "AF_BIPINDI_01",
+      "lat": 3.10,
+      "lon": 10.50,
+      "region": "Cameroon_south",
+      "biome": "Congo_transitional_rainforest",
+      "rationale": "Cocoa expansion + artisanal logging; near test tile latitude"
+    },
+    {
+      "tile_id": "AF_MINKEBE_01",
+      "lat": 1.50,
+      "lon": 12.70,
+      "region": "Gabon_Minkebe",
+      "biome": "Congo_lowland_rainforest",
+      "rationale": "Artisanal gold mining roads; high-confidence RADD alerts"
+    },
+    {
+      "tile_id": "AF_NECAR_01",
+      "lat": 3.00,
+      "lon": 16.20,
+      "region": "CAR_Dzanga-Sangha_NE",
+      "biome": "Congo_lowland_rainforest",
+      "rationale": "Selective logging + poaching roads; shares MGRS belt with test tile"
+    },
+    {
+      "tile_id": "AF_TAI_01",
+      "lat": 5.70,
+      "lon": -7.30,
+      "region": "Cote-dIvoire_Tai",
+      "biome": "Upper-Guinea_rainforest",
+      "rationale": "Cocoa-driven deforestation; different biome for regularization"
+    },
+    {
+      "tile_id": "AF_MASOALA_01",
+      "lat": -15.60,
+      "lon": 50.00,
+      "region": "Madagascar_Masoala",
+      "biome": "Madagascar_lowland_rainforest",
+      "rationale": "Slash-and-burn on coastal rainforest; distinct spectral signature"
+    },
+    {
+      "tile_id": "AF_ZAMBEZIA_01",
+      "lat": -16.30,
+      "lon": 37.00,
+      "region": "Mozambique_Zambezia",
+      "biome": "Southern_miombo_woodland",
+      "rationale": "Charcoal + agricultural expansion on drier forest biome"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+# Data (43GB+ of TIFF embeddings)
+data/
+
+# Trained model weights
+models/*.pt
+models/*.json
+
+# Generated predictions and submissions
+submission/*.tif
+submission/*.geojson
+submission_utae/
+submission_xgb/
+
+# Generated figures
+figures/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment
+.env
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db

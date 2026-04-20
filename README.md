@@ -2,13 +2,24 @@
 
 **osapiens Makeathon 2026** — Pixel-level deforestation detection using multi-modal satellite time series.
 
+---
+
+## Team
+
+Third place — **osapiens Makeathon Munich 2026** 🥉
+
+- **Ersjan Këri** — [LinkedIn](https://www.linkedin.com/in/ersjan-këri-7a7240208/)
+- **Yll Kryeziu** — [LinkedIn](https://www.linkedin.com/in/yll-kryeziu/) · [GitHub](https://github.com/yllkryeziu)
+- **Donald Fuga** — [LinkedIn](https://www.linkedin.com/in/donald-fuga-133a9b246/)
+- **Ar Pazari** — [LinkedIn](https://www.linkedin.com/in/ar-pazari152003/)
+
 **Live Demo:** [omegaearth.web.app](https://omegaearth.web.app/)
 
 ![Demo](togif.gif)
 
 ---
 
-## Results — Leaderboard #11
+## Results — Leaderboard #3
 
 | Union IoU | Poly Recall | Poly FPR | Year Accuracy |
 |-----------|-------------|----------|---------------|
